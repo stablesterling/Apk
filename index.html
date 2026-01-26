@@ -1,1 +1,420 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoFo Music | Immersive Session</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #0d0d0d; --gold: #c5a367; --soft: #e5e5e5; --muted: #666666; --silver: #b0b0b0; --serif: 'Cormorant Garamond', serif; --sans: 'Montserrat', sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            background: var(--bg); 
+            color: var(--soft); 
+            font-family: var(--sans); 
+            min-height: 100vh; 
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        #bg-blur {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+            background-size: cover;
+            background-position: center;
+            filter: blur(80px) brightness(0.25);
+            transition: background-image 1.5s ease;
+            transform: scale(1.1);
+        }
+
+        .hidden { display: none !important; }
+        .vofo-logo { font-family: var(--serif); font-size: clamp(3rem, 10vw, 6rem); font-weight: 500; color: var(--gold); letter-spacing: 8px; margin: 10px 0; text-transform: uppercase; text-align: center; }
+        
+        /* AUTH UI */
+        .auth-container { position: fixed; inset: 0; background: var(--bg); z-index: 5000; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .auth-card { background: rgba(17, 17, 17, 0.8); backdrop-filter: blur(20px); padding: 40px; border-radius: 12px; width: 100%; max-width: 380px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+        .auth-card input { width: 100%; padding: 14px; margin-bottom: 12px; background: #000; border: 1px solid #222; color: white; outline: none; border-radius: 4px; }
+        .auth-btn { width: 100%; padding: 16px; background: var(--gold); border: none; font-weight: 600; cursor: pointer; color: #000; letter-spacing: 2px; text-transform: uppercase; border-radius: 4px; }
+
+        /* NAV */
+        nav { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            padding: 20px 40px; 
+            position: sticky; 
+            top: 0; 
+            z-index: 100; 
+            background: rgba(13, 13, 13, 0.4); 
+            backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
+            border-bottom: 1px solid rgba(197, 163, 103, 0.4); 
+        }
+        .nav-links { display: flex; align-items: center; }
+        .nav-links span { font-size: 11px; letter-spacing: 2px; cursor: pointer; color: var(--muted); margin-left: 25px; text-transform: uppercase; transition: 0.3s; }
+        .nav-links span.active, .nav-links span:hover { color: var(--gold); }
+        .logout-link { border: 1px solid rgba(197, 163, 103, 0.2); padding: 5px 12px; border-radius: 4px; }
+        .logout-link:hover { background: rgba(197, 163, 103, 0.1); }
+
+        /* CONTENT */
+        .hero { display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+        .search-box { width: 100%; max-width: 500px; margin-top: 30px; display: flex; flex-direction: column; gap: 15px; }
+        .search-box input { width: 100%; padding: 18px; text-align: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; font-family: var(--serif); font-size: 20px; font-style: italic; outline: none; border-radius: 8px; }
+        
+        .container { width: 100%; max-width: 800px; margin: auto; padding-bottom: 180px; }
+        .track { padding: 15px 15px; display: flex; align-items: center; gap: 20px; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; transition: 0.2s; border-radius: 8px; }
+        .track:hover { background: rgba(255,255,255,0.05); }
+        .track img { width: 50px; height: 50px; border-radius: 6px; object-fit: cover; }
+        .track-meta div:first-child { font-weight: 500; font-family: var(--serif); font-size: 18px; }
+        .track-meta div:last-child { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+
+        /* FLOATING MUSIC CONTROLLER */
+        .player { 
+            position: fixed; 
+            bottom: 30px; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%; 
+            max-width: 800px;
+            background: rgba(15, 15, 15, 0.7); 
+            backdrop-filter: blur(30px) saturate(150%); 
+            padding: 12px 25px; 
+            display: flex; 
+            align-items: center; 
+            gap: 20px; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            border-radius: 20px; 
+            z-index: 1000;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+        }
+        
+        .player.expanded {
+            bottom: 0; left: 0; transform: none; width: 100%; height: 100%; max-width: none; border-radius: 0; flex-direction: column; justify-content: center; padding: 40px 20px; background: var(--bg);
+        }
+
+        .back-btn { position: absolute; top: 40px; left: 30px; font-size: 24px; color: var(--gold); display: none; cursor: pointer; z-index: 1001; }
+        .player.expanded .back-btn { display: block; }
+
+        .p-thumb { width: 50px; height: 50px; border-radius: 10px; object-fit: cover; transition: 0.5s; }
+        .player.expanded .p-thumb {
+            width: 80vw; max-width: 350px; height: 80vw; max-height: 350px; margin-bottom: 40px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        }
+
+        .player-info { flex: 1; min-width: 0; transition: 0.5s; }
+        .player.expanded .player-info { flex: none; text-align: center; width: 100%; margin-bottom: 30px; }
+
+        #pTitle { font-family: var(--serif); font-size: 17px; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .player.expanded #pTitle { font-size: 28px; white-space: normal; overflow: visible; }
+        
+        .player-center { flex: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: 0.5s; }
+        .player.expanded .player-center { flex: none; width: 100%; }
+
+        .controls-main { display: flex; align-items: center; gap: 20px; }
+        .player.expanded .controls-main { gap: 40px; margin-bottom: 20px; }
+
+        .ctrl-btn { background: none; border: none; color: var(--soft); font-size: 20px; cursor: pointer; transition: 0.2s; }
+        .play-trigger { background: var(--gold); color: #000; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; }
+        .player.expanded .play-trigger { width: 70px; height: 70px; font-size: 24px; }
+        
+        .progress-container { width: 100%; display: flex; align-items: center; gap: 10px; font-size: 9px; color: var(--muted); }
+        #progress { flex: 1; height: 3px; accent-color: var(--gold); cursor: pointer; }
+
+        .player-right { flex: 0.5; display: flex; align-items: center; justify-content: flex-end; }
+        .player.expanded .player-right { position: absolute; bottom: 120px; right: 40px; }
+
+        #likeBtn { cursor: pointer; font-size: 18px; color: var(--muted); transition: 0.3s; }
+        #likeBtn.liked { color: #ff4b2b; }
+
+        footer { padding: 40px 20px 140px 20px; text-align: center; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); line-height: 2; }
+        .company { color: var(--gold); font-weight: 600; font-family: var(--serif); }
+        #yt-player { position: absolute; opacity: 0; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="bg-blur"></div>
+
+<div id="authScreen" class="auth-container">
+    <div id="loginForm" class="auth-card">
+        <div class="vofo-logo" style="font-size: 3rem;">VoFo</div>
+        <input type="text" id="lUser" placeholder="IDENTITY">
+        <input type="password" id="lPass" placeholder="ENCRYPTION">
+        <button class="auth-btn" id="authSubmitBtn" onclick="handleAuth()">Initialize</button>
+        <p style="font-size:10px; margin-top:20px; cursor:pointer; color:var(--muted)" onclick="toggleAuth()">CREATE ACCOUNT</p>
+    </div>
+</div>
+
+<div id="app" class="hidden">
+    <nav>
+        <div style="font-family: var(--serif); color:var(--gold); font-size: 22px; letter-spacing: 4px;">VOFO</div>
+        <div class="nav-links">
+            <span id="navExplore" class="active" onclick="switchTab('explore')">Frequency</span>
+            <span id="navLibrary" onclick="switchTab('library')">Liked Songs</span>
+            <span id="navLogout" class="logout-link" onclick="handleLogout()">Logout</span>
+        </div>
+    </nav>
+
+    <div id="exploreTab" class="hero">
+        <div class="vofo-logo">VoFo</div>
+        <div class="search-box">
+            <input id="searchInput" placeholder="Search track..." onkeypress="if(event.key==='Enter') doSearch()">
+            <button class="auth-btn" style="padding: 12px;" onclick="doSearch()">Explore</button>
+        </div>
+        <div id="results" class="container"></div>
+    </div>
+
+    <div id="libraryTab" class="hero hidden">
+        <div class="vofo-logo">Liked Songs</div>
+        <div id="libraryResults" class="container"></div>
+    </div>
+
+    <footer>
+        <div>&copy; 2026 ALL RIGHTS RESERVED</div>
+        <div>DESIGNED AND ENGINEERED BY <span class="designer">ABHIRAM</span></div>
+        <div>IN COLLAB WITH <span class="company">PLYBOYZ COMPANY</span> &reg;</div>
+    </footer>
+</div>
+
+<div class="player hidden" id="playerBar" onclick="toggleExpand(event)">
+    <div class="back-btn" onclick="closeExpand(event)">←</div>
+    <div id="yt-player"></div>
+    <img id="pThumb" class="p-thumb" src="">
+    
+    <div class="player-info">
+        <div id="pTitle">...</div>
+        <div id="pArtist" style="font-size: 9px; color: var(--muted); text-transform: uppercase;">...</div>
+    </div>
+
+    <div class="player-center">
+        <div class="controls-main">
+            <button class="ctrl-btn" onclick="event.stopPropagation(); skipPrev()">⏮</button>
+            <button class="ctrl-btn play-trigger" id="playBtn" onclick="event.stopPropagation(); togglePlay()">▶</button>
+            <button class="ctrl-btn" onclick="event.stopPropagation(); skipNext()">⏭</button>
+        </div>
+        <div class="progress-container">
+            <span id="curTime">0:00</span>
+            <input type="range" id="progress" value="0" step="1" onclick="event.stopPropagation()" oninput="seek(this.value)">
+            <span id="durTime">0:00</span>
+        </div>
+    </div>
+
+    <div class="player-right">
+        <div id="likeBtn" onclick="event.stopPropagation(); toggleLikeCurrent()">❤</div>
+    </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="cordova.js"></script>
+<script>
+    let player, currentUser = null, isLoginMode = true;
+    let currentPlaylist = [], currentIndex = -1;
+
+    // --- INITIALIZATION & PERSISTENCE ---
+    window.onload = () => {
+        const savedUser = localStorage.getItem('vofo_user');
+        if (savedUser) {
+            currentUser = JSON.parse(savedUser);
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            fetchTrending();
+        }
+    };
+
+    // --- NATIVE BACKGROUND MODE ---
+    document.addEventListener('deviceready', () => {
+        if (window.cordova && cordova.plugins && cordova.plugins.backgroundMode) {
+            cordova.plugins.backgroundMode.enable();
+            
+            // Critical fix for Background Play
+            cordova.plugins.backgroundMode.on('activate', () => {
+                cordova.plugins.backgroundMode.disableWebViewOptimizations();
+            });
+
+            cordova.plugins.backgroundMode.setDefaults({
+                title: 'VoFo Music',
+                text: 'Your session is active',
+                icon: 'ic_launcher',
+                color: 'c5a367',
+                resume: true,
+                silent: false
+            });
+        }
+    }, false);
+
+    function toggleExpand(e) {
+        const playerBar = document.getElementById('playerBar');
+        if (!playerBar.classList.contains('expanded')) playerBar.classList.add('expanded');
+    }
+
+    function closeExpand(e) {
+        e.stopPropagation();
+        document.getElementById('playerBar').classList.remove('expanded');
+    }
+
+    function toggleAuth() {
+        isLoginMode = !isLoginMode;
+        document.querySelector('#loginForm .vofo-logo').innerText = isLoginMode ? "VoFo" : "Registry";
+        document.querySelector('#loginForm .auth-btn').innerText = isLoginMode ? "Initialize" : "Register";
+        document.querySelector('#loginForm p').innerText = isLoginMode ? "CREATE ACCOUNT" : "BACK TO LOGIN";
+    }
+
+    async function handleAuth() {
+        const u = document.getElementById('lUser').value;
+        const p = document.getElementById('lPass').value;
+        try {
+            const res = await fetch(isLoginMode ? '/api/login' : '/api/register', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username: u, password: p})
+            });
+            const data = await res.json();
+            if(data.success) {
+                if(isLoginMode) {
+                    currentUser = data;
+                    localStorage.setItem('vofo_user', JSON.stringify(data)); // Persistent Login
+                    document.getElementById('authScreen').classList.add('hidden');
+                    document.getElementById('app').classList.remove('hidden');
+                    fetchTrending();
+                } else { alert("Registry successful."); toggleAuth(); }
+            } else { alert("Access Denied"); }
+        } catch (e) {
+            alert("Connection Error. Check your backend.");
+        }
+    }
+
+    function handleLogout() {
+        currentUser = null;
+        localStorage.removeItem('vofo_user');
+        if(player && player.stopVideo) player.stopVideo();
+        document.getElementById('app').classList.add('hidden');
+        document.getElementById('playerBar').classList.add('hidden');
+        document.getElementById('authScreen').classList.remove('hidden');
+        document.getElementById('bg-blur').style.backgroundImage = 'none';
+    }
+
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('yt-player', {
+            playerVars: { 'autoplay': 1, 'controls': 0, 'playsinline': 1 },
+            events: {
+                'onStateChange': (e) => {
+                    document.getElementById('playBtn').innerText = e.data === 1 ? "||" : "▶";
+                    if(e.data === 0) skipNext();
+                }
+            }
+        });
+        setInterval(updateUI, 1000);
+    }
+
+    function switchTab(tab) {
+        exploreTab.classList.toggle('hidden', tab!=='explore');
+        libraryTab.classList.toggle('hidden', tab!=='library');
+        navExplore.classList.toggle('active', tab==='explore');
+        navLibrary.classList.toggle('active', tab==='library');
+        if(tab==='library') fetchLiked();
+    }
+
+    async function fetchTrending() {
+        const res = await fetch('/api/trending');
+        const data = await res.json();
+        renderTracks(data, 'results');
+    }
+
+    async function doSearch() {
+        const q = searchInput.value;
+        if(!q) return;
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        renderTracks(data, 'results');
+    }
+
+    function renderTracks(tracks, target) {
+        document.getElementById(target).innerHTML = tracks.map((s, i) => `
+            <div class="track" onclick='startPlaylist(${i}, ${JSON.stringify(tracks).replace(/'/g, "&apos;")})'>
+                <img src="${s.thumbnail}">
+                <div class="track-meta"><div>${s.title}</div><div>${s.artist}</div></div>
+            </div>
+        `).join('');
+    }
+
+    function startPlaylist(index, tracks) {
+        currentPlaylist = tracks;
+        playSong(index);
+    }
+
+    function playSong(index) {
+        currentIndex = index;
+        const song = currentPlaylist[index];
+        document.getElementById('playerBar').classList.remove('hidden');
+        pTitle.innerText = song.title;
+        pArtist.innerText = song.artist;
+        pThumb.src = song.thumbnail;
+        document.getElementById('bg-blur').style.backgroundImage = `url('${song.thumbnail}')`;
+        player.loadVideoById(song.id);
+        checkIfLiked(song.id);
+    }
+
+    function togglePlay() {
+        const state = player.getPlayerState();
+        if(state === 1) player.pauseVideo();
+        else player.playVideo();
+    }
+
+    function skipNext() { if(currentIndex < currentPlaylist.length - 1) playSong(currentIndex + 1); }
+    function skipPrev() { if(currentIndex > 0) playSong(currentIndex - 1); }
+    function seek(val) { player.seekTo((val / 100) * player.getDuration()); }
+
+    function updateUI() {
+        if(player && player.getDuration) {
+            const cur = player.getCurrentTime();
+            const dur = player.getDuration();
+            if(dur > 0) {
+                progress.value = (cur / dur) * 100;
+                curTime.innerText = formatTime(cur);
+                durTime.innerText = formatTime(dur);
+            }
+        }
+    }
+
+    function formatTime(s) {
+        const min = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+    }
+
+    async function toggleLikeCurrent() {
+        const song = currentPlaylist[currentIndex];
+        const res = await fetch('/api/like', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                user_id: currentUser.user_id, song_id: song.id,
+                title: song.title, artist: song.artist, thumbnail: song.thumbnail
+            })
+        });
+        const data = await res.json();
+        likeBtn.classList.toggle('liked', data.status === 'liked');
+        fetchLiked();
+    }
+
+    async function fetchLiked() {
+        if(!currentUser) return;
+        const res = await fetch(`/api/liked/${currentUser.user_id}`);
+        const data = await res.json();
+        const stackOrder = [...data].reverse(); 
+        renderTracks(stackOrder, 'libraryResults');
+    }
+
+    async function checkIfLiked(id) {
+        if(!currentUser) return;
+        const res = await fetch(`/api/liked/${currentUser.user_id}`);
+        const data = await res.json();
+        const isLiked = data.some(s => s.id === id);
+        likeBtn.classList.toggle('liked', isLiked);
+    }
+</script>
+</body>
+</html>
