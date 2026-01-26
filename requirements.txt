@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+ytmusicapi
+sqlalchemy
+psycopg2-binary
+bcrypt
