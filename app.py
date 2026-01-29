@@ -37,11 +37,8 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# Initialize YTMusic with headers
+# Initialize YTMusic (anonymous)
 yt = YTMusic()
-
-# Mount static files for PWA assets
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(CORSMiddleware, 
     allow_origins=["*"], 
@@ -61,49 +58,43 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def get_db():
     db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    try: 
+        yield db
+    finally: 
+        db.close()
 
 # --- STATIC FILES ROUTES ---
 @app.get("/manifest.json")
 async def get_manifest():
     return FileResponse("manifest.json")
 
-@app.get("/service-worker.js")
-async def get_service_worker():
-    return FileResponse("service-worker.js")
-
-@app.get("/offline.html")
-async def get_offline():
-    return FileResponse("offline.html")
-
 # --- AUTH ROUTES ---
 @app.post("/api/register")
-async def register(data: dict, db: Session = Depends(get_db)):
-    if not data.get('username') or not data.get('password'):
-        raise HTTPException(400, "Username and password required")
+async def register(username: str, password: str, db: Session = Depends(get_db)):
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
     
-    if db.query(User).filter(User.username == data['username']).first():
-        raise HTTPException(400, "Username already exists")
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
     
-    user = User(username=data['username'], password=hash_password(data['password']))
+    user = User(username=username, password=hash_password(password))
     db.add(user)
     db.commit()
     return {"success": True}
 
 @app.post("/api/login")
-async def login(data: dict, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == data['username']).first()
-    if not user or not verify_password(data['password'], user.password):
-        raise HTTPException(401, "Invalid credentials")
+async def login(username: str, password: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not verify_password(password, user.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     return {"success": True, "user_id": user.id, "username": user.username}
 
 # --- LIKES ROUTES ---
 @app.post("/api/like")
-async def toggle_like(data: dict, db: Session = Depends(get_db)):
+async def toggle_like(user_id: int, song_id: str, title: str, artist: str, thumbnail: str, db: Session = Depends(get_db)):
     existing = db.query(LikedSong).filter(
-        LikedSong.user_id == data['user_id'], 
-        LikedSong.song_id == data['song_id']
+        LikedSong.user_id == user_id, 
+        LikedSong.song_id == song_id
     ).first()
     
     if existing:
@@ -112,11 +103,11 @@ async def toggle_like(data: dict, db: Session = Depends(get_db)):
         return {"status": "unliked"}
     
     new_like = LikedSong(
-        user_id=data['user_id'], 
-        song_id=data['song_id'], 
-        title=data['title'], 
-        artist=data['artist'], 
-        thumbnail=data['thumbnail']
+        user_id=user_id, 
+        song_id=song_id, 
+        title=title, 
+        artist=artist, 
+        thumbnail=thumbnail
     )
     db.add(new_like)
     db.commit()
@@ -132,7 +123,15 @@ async def get_liked(user_id: int, db: Session = Depends(get_db)):
 async def trending():
     try:
         songs = yt.get_charts(country="IN")['songs']['items']
-        return [{"id": s['videoId'], "title": s['title'], "artist": s['artists'][0]['name'], "thumbnail": s['thumbnails'][-1]['url']} for s in songs[:15]]
+        result = []
+        for s in songs[:15]:
+            result.append({
+                "id": s.get('videoId', ''),
+                "title": s.get('title', 'Unknown'),
+                "artist": s['artists'][0]['name'] if s.get('artists') else 'Unknown',
+                "thumbnail": s['thumbnails'][-1]['url'] if s.get('thumbnails') else ''
+            })
+        return result
     except Exception as e:
         print(f"Trending error: {e}")
         return []
@@ -141,33 +140,27 @@ async def trending():
 async def search(q: str):
     try:
         results = yt.search(q, filter="songs")
-        return [{"id": r['videoId'], "title": r['title'], "artist": r['artists'][0]['name'], "thumbnail": r['thumbnails'][-1]['url']} for r in results[:20]]
+        search_results = []
+        for r in results[:20]:
+            search_results.append({
+                "id": r.get('videoId', ''),
+                "title": r.get('title', 'Unknown'),
+                "artist": r['artists'][0]['name'] if r.get('artists') else 'Unknown',
+                "thumbnail": r['thumbnails'][-1]['url'] if r.get('thumbnails') else ''
+            })
+        return search_results
     except Exception as e:
         print(f"Search error: {e}")
         return []
 
-@app.get("/api/song/{video_id}")
-async def get_song_info(video_id: str):
-    try:
-        song = yt.get_song(video_id)
-        return {
-            "id": video_id,
-            "title": song.get('title', 'Unknown'),
-            "artist": song.get('artist', {}).get('name', 'Unknown'),
-            "thumbnail": song.get('thumbnail', {}).get('url', '')
-        }
-    except Exception as e:
-        print(f"Song info error: {e}")
-        return {"id": video_id, "title": "Unknown", "artist": "Unknown", "thumbnail": ""}
-
-@app.get("/", response_class=HTMLResponse)
-def home():
-    with open("index.html", "r", encoding="utf-8") as f: 
-        return f.read()
+@app.get("/")
+async def home():
+    with open("index.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "message": "VoFo Music API is running"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
