@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-sqlalchemy==1.4.50  # Use older SQLAlchemy that's compatible
+sqlalchemy==1.4.50
 psycopg2-binary==2.9.9
 bcrypt==4.1.2
 python-multipart==0.0.6
