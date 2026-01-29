@@ -1,14 +1,12 @@
 import os
 import bcrypt
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Depends, Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from ytmusicapi import YTMusic
 import json
 
 # --- DATABASE SETUP ---
@@ -37,9 +35,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# Initialize YTMusic (anonymous)
-yt = YTMusic()
-
 app.add_middleware(CORSMiddleware, 
     allow_origins=["*"], 
     allow_methods=["*"], 
@@ -63,55 +58,78 @@ def get_db():
     finally: 
         db.close()
 
-# --- STATIC FILES ROUTES ---
-@app.get("/manifest.json")
-async def get_manifest():
-    return FileResponse("manifest.json")
+# --- SIMPLE MUSIC DATA (No ytmusicapi for now) ---
+MOCK_TRENDING = [
+    {"id": "dQw4w9WgXcQ", "title": "Never Gonna Give You Up", "artist": "Rick Astley", "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"},
+    {"id": "9bZkp7q19f0", "title": "Gangnam Style", "artist": "PSY", "thumbnail": "https://i.ytimg.com/vi/9bZkp7q19f0/hqdefault.jpg"},
+    {"id": "kffacxfA7G4", "title": "Baby", "artist": "Justin Bieber", "thumbnail": "https://i.ytimg.com/vi/kffacxfA7G4/hqdefault.jpg"},
+    {"id": "JGwWNGJdvx8", "title": "Shape of You", "artist": "Ed Sheeran", "thumbnail": "https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg"},
+    {"id": "nfs8NYg7yQM", "title": "Blinding Lights", "artist": "The Weeknd", "thumbnail": "https://i.ytimg.com/vi/nfs8NYg7yQM/hqdefault.jpg"},
+]
 
 # --- AUTH ROUTES ---
 @app.post("/api/register")
-async def register(username: str, password: str, db: Session = Depends(get_db)):
-    if not username or not password:
-        raise HTTPException(status_code=400, detail="Username and password required")
-    
-    if db.query(User).filter(User.username == username).first():
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    user = User(username=username, password=hash_password(password))
-    db.add(user)
-    db.commit()
-    return {"success": True}
+async def register(request: Request, db: Session = Depends(get_db)):
+    try:
+        data = await request.json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            raise HTTPException(status_code=400, detail="Username and password required")
+        
+        if db.query(User).filter(User.username == username).first():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        
+        user = User(username=username, password=hash_password(password))
+        db.add(user)
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/login")
-async def login(username: str, password: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
-    if not user or not verify_password(password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"success": True, "user_id": user.id, "username": user.username}
+async def login(request: Request, db: Session = Depends(get_db)):
+    try:
+        data = await request.json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        user = db.query(User).filter(User.username == username).first()
+        if not user or not verify_password(password, user.password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        return {"success": True, "user_id": user.id, "username": user.username}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- LIKES ROUTES ---
 @app.post("/api/like")
-async def toggle_like(user_id: int, song_id: str, title: str, artist: str, thumbnail: str, db: Session = Depends(get_db)):
-    existing = db.query(LikedSong).filter(
-        LikedSong.user_id == user_id, 
-        LikedSong.song_id == song_id
-    ).first()
-    
-    if existing:
-        db.delete(existing)
+async def toggle_like(request: Request, db: Session = Depends(get_db)):
+    try:
+        data = await request.json()
+        
+        existing = db.query(LikedSong).filter(
+            LikedSong.user_id == data['user_id'], 
+            LikedSong.song_id == data['song_id']
+        ).first()
+        
+        if existing:
+            db.delete(existing)
+            db.commit()
+            return {"status": "unliked"}
+        
+        new_like = LikedSong(
+            user_id=data['user_id'], 
+            song_id=data['song_id'], 
+            title=data['title'], 
+            artist=data['artist'], 
+            thumbnail=data['thumbnail']
+        )
+        db.add(new_like)
         db.commit()
-        return {"status": "unliked"}
-    
-    new_like = LikedSong(
-        user_id=user_id, 
-        song_id=song_id, 
-        title=title, 
-        artist=artist, 
-        thumbnail=thumbnail
-    )
-    db.add(new_like)
-    db.commit()
-    return {"status": "liked"}
+        return {"status": "liked"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/liked/{user_id}")
 async def get_liked(user_id: int, db: Session = Depends(get_db)):
@@ -121,42 +139,42 @@ async def get_liked(user_id: int, db: Session = Depends(get_db)):
 # --- MUSIC ROUTES ---
 @app.get("/api/trending")
 async def trending():
-    try:
-        songs = yt.get_charts(country="IN")['songs']['items']
-        result = []
-        for s in songs[:15]:
-            result.append({
-                "id": s.get('videoId', ''),
-                "title": s.get('title', 'Unknown'),
-                "artist": s['artists'][0]['name'] if s.get('artists') else 'Unknown',
-                "thumbnail": s['thumbnails'][-1]['url'] if s.get('thumbnails') else ''
-            })
-        return result
-    except Exception as e:
-        print(f"Trending error: {e}")
-        return []
+    return MOCK_TRENDING
 
 @app.get("/api/search")
 async def search(q: str):
-    try:
-        results = yt.search(q, filter="songs")
-        search_results = []
-        for r in results[:20]:
-            search_results.append({
-                "id": r.get('videoId', ''),
-                "title": r.get('title', 'Unknown'),
-                "artist": r['artists'][0]['name'] if r.get('artists') else 'Unknown',
-                "thumbnail": r['thumbnails'][-1]['url'] if r.get('thumbnails') else ''
-            })
-        return search_results
-    except Exception as e:
-        print(f"Search error: {e}")
-        return []
+    # Simple mock search
+    results = []
+    for song in MOCK_TRENDING:
+        if q.lower() in song['title'].lower() or q.lower() in song['artist'].lower():
+            results.append(song)
+    return results[:10]
 
 @app.get("/")
 async def home():
     with open("index.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
+
+@app.get("/manifest.json")
+async def manifest():
+    manifest_data = {
+        "name": "VoFo Music",
+        "short_name": "VoFo",
+        "description": "Immersive Music Experience",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0d0d0d",
+        "theme_color": "#c5a367",
+        "orientation": "portrait",
+        "icons": [
+            {
+                "src": "https://via.placeholder.com/192x192/c5a367/0d0d0d?text=VF",
+                "sizes": "192x192",
+                "type": "image/png"
+            }
+        ]
+    }
+    return JSONResponse(content=manifest_data)
 
 @app.get("/health")
 async def health_check():
