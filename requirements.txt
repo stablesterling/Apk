@@ -1,6 +1,7 @@
-fastapi
-uvicorn
-ytmusicapi
-sqlalchemy
-psycopg2-binary
-bcrypt
+fastapi==0.104.1
+uvicorn==0.24.0
+sqlalchemy==2.0.23
+bcrypt==4.1.2
+requests==2.31.0
+psycopg2-binary==2.9.9
+python-multipart==0.0.6
